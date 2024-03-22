@@ -1,31 +1,27 @@
-const {remote, ipcRenderer} = require('electron')
-const {h, Component} = require('preact')
+import * as remote from '@electron/remote'
+import {h, Component} from 'preact'
 
 const setting = remote.require('./setting')
 
-class BusyScreen extends Component {
-    componentWillReceiveProps({show}) {
-        if (show === this.props.show) return
+export default class BusyScreen extends Component {
+  componentWillReceiveProps({show}) {
+    if (show === this.props.show) return
 
-        clearTimeout(this.busyId)
+    clearTimeout(this.busyId)
 
-        if (show) {
-            ipcRenderer.send('build-menu', true)
-            this.setState({show: true})
-            document.activeElement.blur()
-        } else {
-            ipcRenderer.send('build-menu')
-            let delay = setting.get('app.hide_busy_delay')
-            this.busyId = setTimeout(() => this.setState({show: false}), delay)
-        }
+    if (show) {
+      this.setState({show: true})
+      document.activeElement.blur()
+    } else {
+      let delay = setting.get('app.hide_busy_delay')
+      this.busyId = setTimeout(() => this.setState({show: false}), delay)
     }
+  }
 
-    render(_, {show}) {
-        return h('section', {
-            id: 'busy',
-            style: {display: show ? 'block' : 'none'}
-        })
-    }
+  render(_, {show}) {
+    return h('section', {
+      id: 'busy',
+      style: {display: show ? 'block' : 'none'}
+    })
+  }
 }
-
-module.exports = BusyScreen

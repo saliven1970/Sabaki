@@ -1,110 +1,130 @@
-const {remote} = require('electron')
-const {h, Component} = require('preact')
-const classNames = require('classnames')
-const sgf = require('@sabaki/sgf')
+import * as remote from '@electron/remote'
+import {h, Component} from 'preact'
+import classNames from 'classnames'
+import {parseVertex} from '@sabaki/sgf'
 
-const Bar = require('./Bar')
+import sabaki from '../../modules/sabaki.js'
+import i18n from '../../i18n.js'
 
-const gametree = require('../../modules/gametree')
-const helper = require('../../modules/helper')
+import Bar from './Bar.js'
+
+const t = i18n.context('AutoplayBar')
 const setting = remote.require('./setting')
 
 let maxSecPerMove = setting.get('autoplay.max_sec_per_move')
+let secondsPerMove = setting.get('autoplay.sec_per_move')
 
-class AutoplayBar extends Component {
-    constructor() {
-        super()
+export default class AutoplayBar extends Component {
+  constructor() {
+    super()
 
-        this.state = {
-            playing: false,
-            secondsPerMove: setting.get('autoplay.sec_per_move')
-        }
-
-        this.handleFormSubmit = evt => {
-            evt.preventDefault()
-        }
-
-        this.handleValueChange = evt => {
-            let value = Math.round(Math.min(maxSecPerMove, Math.max(1, +evt.currentTarget.value)))
-
-            this.setState({secondsPerMove: value})
-            setting.set('autoplay.sec_per_move', value)
-        }
-
-        this.handlePlayButtonClick = () => {
-            if (this.state.playing) this.stopAutoplay()
-            else this.startAutoplay()
-        }
-
-        this.startAutoplay = this.startAutoplay.bind(this)
-        this.stopAutoplay = this.stopAutoplay.bind(this)
+    this.state = {
+      playing: false,
+      secondsPerMove,
+      secondsPerMoveInput: secondsPerMove
     }
 
-    shouldComponentUpdate(nextProps) {
-        return nextProps.mode !== this.props.mode || nextProps.mode === 'autoplay'
+    this.handleFormSubmit = evt => {
+      evt.preventDefault()
     }
 
-    componentWillReceiveProps(nextProps) {
-        if (this.state.playing && nextProps.mode !== 'autoplay') this.stopAutoplay()
+    this.handleValueInput = evt => {
+      this.setState({secondsPerMoveInput: evt.currentTarget.value})
     }
 
-    startAutoplay() {
-        let autoplay = () => {
-            sabaki.events.removeListener('navigate', this.stopAutoplay)
+    this.handleValueChange = evt => {
+      let value = Math.round(
+        Math.min(maxSecPerMove, Math.max(1, +evt.currentTarget.value))
+      )
 
-            if (!this.state.playing) return
+      if (!isNaN(value)) {
+        this.setState({
+          secondsPerMove: value,
+          secondsPerMoveInput: value
+        })
+      }
 
-            let tp = gametree.navigate(...this.props.treePosition, 1)
-            if (!tp) return this.stopAutoplay()
-
-            let node = tp[0].nodes[tp[1]]
-
-            if (!node.B && !node.W) {
-                sabaki.setCurrentTreePosition(...tp)
-            } else {
-                let vertex = sgf.parseVertex(node.B ? node.B[0] : node.W[0])
-                sabaki.makeMove(vertex, {player: node.B ? 1 : -1})
-            }
-
-            sabaki.events.addListener('navigate', this.stopAutoplay)
-            this.autoplayId = setTimeout(autoplay, this.state.secondsPerMove * 1000)
-        }
-
-        this.setState({playing: true})
-        autoplay()
+      setting.set('autoplay.sec_per_move', this.state.secondsPerMove)
     }
 
-    stopAutoplay() {
-        sabaki.events.removeListener('navigate', this.stopAutoplay)
-        clearTimeout(this.autoplayId)
-
-        this.setState({playing: false})
+    this.handlePlayButtonClick = () => {
+      if (this.state.playing) this.stopAutoplay()
+      else this.startAutoplay()
     }
 
-    render(_, {
-        secondsPerMove,
-        playing
-    }) {
-        return h(Bar, Object.assign({type: 'autoplay', class: classNames({playing})}, this.props),
-            h('form', {onSubmit: this.handleFormSubmit},
-                h('label', {},
-                    h('input', {
-                        type: 'number',
-                        name: 'duration',
-                        value: secondsPerMove,
-                        min: 1,
-                        max: maxSecPerMove,
-                        step: 1,
+    this.startAutoplay = this.startAutoplay.bind(this)
+    this.stopAutoplay = this.stopAutoplay.bind(this)
+  }
 
-                        onChange: this.handleValueChange
-                    }),
-                    ' sec per move'
-                )
-            ),
+  shouldComponentUpdate(nextProps) {
+    return nextProps.mode !== this.props.mode || nextProps.mode === 'autoplay'
+  }
 
-            h('a', {class: 'play', href: '#', onClick: this.handlePlayButtonClick})
+  componentWillReceiveProps(nextProps) {
+    if (this.state.playing && nextProps.mode !== 'autoplay') this.stopAutoplay()
+  }
+
+  startAutoplay() {
+    let autoplay = () => {
+      sabaki.events.removeListener('navigate', this.stopAutoplay)
+      if (!this.state.playing) return
+
+      let {gameTree, gameCurrents, treePosition} = this.props
+      let node = gameTree.navigate(treePosition, 1, gameCurrents)
+      if (!node) return this.stopAutoplay()
+
+      if (node.data.B == null && node.data.W == null) {
+        sabaki.setCurrentTreePosition(gameTree, treePosition)
+      } else {
+        let vertex = parseVertex(
+          node.data.B != null ? node.data.B[0] : node.data.W[0]
         )
-    }
-}
+        sabaki.makeMove(vertex, {player: node.data.B ? 1 : -1})
+      }
 
-module.exports = AutoplayBar
+      sabaki.events.addListener('navigate', this.stopAutoplay)
+      this.autoplayId = setTimeout(autoplay, this.state.secondsPerMove * 1000)
+    }
+
+    this.setState({playing: true}, autoplay)
+  }
+
+  stopAutoplay() {
+    sabaki.events.removeListener('navigate', this.stopAutoplay)
+    clearTimeout(this.autoplayId)
+
+    this.setState({playing: false})
+  }
+
+  render(_, {secondsPerMoveInput, playing}) {
+    return h(
+      Bar,
+      Object.assign(
+        {type: 'autoplay', class: classNames({playing})},
+        this.props
+      ),
+      h(
+        'form',
+        {onSubmit: this.handleFormSubmit},
+        h(
+          'label',
+          {},
+          h('input', {
+            type: 'number',
+            value: secondsPerMoveInput,
+            min: 1,
+            max: maxSecPerMove,
+            step: 1,
+
+            onInput: this.handleValueInput,
+            onChange: this.handleValueChange
+          }),
+          ' ',
+          t('sec per move')
+        )
+      ),
+
+      h('a', {class: 'play', href: '#', onClick: this.handlePlayButtonClick})
+    )
+  }
+}

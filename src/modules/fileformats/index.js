@@ -1,31 +1,36 @@
-const {extname} = require('path')
+import {extname} from 'path'
+import i18n from '../../i18n.js'
+import * as sgf from './sgf.js'
+import * as ngf from './ngf.js'
+import * as gib from './gib.js'
+import * as ugf from './ugf.js'
 
-let sgf = require('./sgf')
-let ngf = require('./ngf')
-let gib = require('./gib')
+const t = i18n.context('fileformats')
 
-let modules = {sgf, ngf, gib}
-
-exports = module.exports = Object.assign({}, modules)
-
+let modules = {sgf, ngf, gib, ugf}
 let extensions = Object.keys(modules).map(key => modules[key].meta)
-let combinedExtensions = extensions.map(x => x.extensions)
-    .reduce((acc, x) => [...acc, ...x], [])
+let combinedExtensions = [].concat(...extensions.map(x => x.extensions))
 
-exports.meta = [
-    {name: 'Game Records', extensions: combinedExtensions},
-    ...extensions
+export {sgf, ngf, gib, ugf}
+
+export const meta = [
+  {name: t('Game Records'), extensions: combinedExtensions},
+  ...extensions
 ]
 
-exports.getModuleByExtension = function(extension) {
-    return modules[Object.keys(modules).find(key =>
+export function getModuleByExtension(extension) {
+  return (
+    modules[
+      Object.keys(modules).find(key =>
         modules[key].meta.extensions.includes(extension.toLowerCase())
-    )] || sgf
+      )
+    ] || sgf
+  )
 }
 
-exports.parseFile = function(filename, onProgress) {
-    let extension = extname(filename).slice(1)
-    let m = exports.getModuleByExtension(extension)
+export function parseFile(filename, onProgress) {
+  let extension = extname(filename).slice(1)
+  let m = getModuleByExtension(extension)
 
-    return m.parseFile(filename, onProgress)
+  return m.parseFile(filename, onProgress)
 }

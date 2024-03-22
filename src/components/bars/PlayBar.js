@@ -1,145 +1,216 @@
-const {h, Component} = require('preact')
-const classNames = require('classnames')
-const {remote} = require('electron')
+import {h, Component} from 'preact'
+import classNames from 'classnames'
 
-const helper = require('../../modules/helper')
-const setting = remote.require('./setting')
+import i18n from '../../i18n.js'
+import sabaki from '../../modules/sabaki.js'
+import * as helper from '../../modules/helper.js'
+import TextSpinner from '../TextSpinner.js'
 
-class PlayBar extends Component {
-    constructor() {
-        super()
+const t = i18n.context('PlayBar')
 
-        this.handleCurrentPlayerClick = () => this.props.onCurrentPlayerClick
-        this.handleUndoButtonClick = () => sabaki.undo()
+export default class PlayBar extends Component {
+  constructor(props) {
+    super(props)
 
-        this.handleMenuClick = () => {
-            let template = [
-                {
-                    label: '&Pass',
-                    click: () => {
-                        let autoGenmove = setting.get('gtp.auto_genmove')
-                        sabaki.makeMove([-1, -1], {sendToEngine: autoGenmove})
-                    }
-                },
-                {
-                    label: '&Resign',
-                    click: () => sabaki.makeResign()
-                },
-                {type: 'separator'},
-                {
-                    label: 'Es&timate',
-                    click: () => sabaki.setMode('estimator')
-                },
-                {
-                    label: '&Score',
-                    click: () => sabaki.setMode('scoring')
-                },
-                {
-                    label: '&Edit',
-                    click: () => sabaki.setMode('edit')
-                },
-                {
-                    label: '&Find',
-                    click: () => sabaki.setMode('find')
-                },
-                {type: 'separator'},
-                {
-                    label: '&Info',
-                    click: () => sabaki.openDrawer('info')
-                }
-            ]
-
-            let {left, top} = this.menuButtonElement.getBoundingClientRect()
-            helper.popupMenu(template, left, top)
-        }
+    this.state = {
+      playerBusy: [false, false]
     }
 
-    shouldComponentUpdate(nextProps) {
-        return nextProps.mode !== this.props.mode || nextProps.mode === 'play'
-    }
-
-    render({
-        mode,
-        attachedEngines,
-        playerNames,
-        playerRanks,
-        playerCaptures,
-        currentPlayer,
-        showHotspot,
-        undoable,
-        undoText,
-
-        onCurrentPlayerClick = helper.noop
-    }) {
-        let captureStyle = index => ({opacity: playerCaptures[index] === 0 ? 0 : .7})
-        let isEngine = Array(attachedEngines.length).fill(false)
-
-        attachedEngines.forEach((engine, i) => {
-            if (engine == null) return
-
-            playerNames[i] = engine.name
-            playerRanks[i] = null
-            isEngine[i] = true
-        })
-
-        return h('header',
-            {
-                class: classNames({
-                    undoable,
-                    hotspot: showHotspot,
-                    current: mode === 'play'
-                })
-            },
-
-            h('span', {id: 'player_1'},
-                h('span', {class: 'captures', style: captureStyle(0)}, playerCaptures[0]), ' ',
-                playerRanks[0] && h('span', {class: 'rank'}, playerRanks[0]), ' ',
-
-                h('span', {
-                    class: classNames('name', {engine: isEngine[0]}),
-                    title: isEngine[0] && 'Engine'
-                }, playerNames[0] || 'Black')
-            ),
-
-            h('span', {id: 'player_-1'},
-                h('span', {
-                    class: classNames('name', {engine: isEngine[1]}),
-                    title: isEngine[1] && 'Engine'
-                }, playerNames[1] || 'White'), ' ',
-
-                playerRanks[1] && h('span', {class: 'rank'}, playerRanks[1]), ' ',
-                h('span', {class: 'captures', style: captureStyle(1)}, playerCaptures[1])
-            ),
-
-            h('img', {
-                src: `./img/ui/player_${currentPlayer}.svg`,
-                class: 'current-player',
-                height: 22,
-                title: 'Change Player',
-                onClick: onCurrentPlayerClick
-            }),
-
-            h('div', {class: 'hotspot', title: 'Hotspot'}),
-
-            h('a',
-                {
-                    class: 'undo',
-                    title: undoText,
-                    onClick: this.handleUndoButtonClick
-                },
-                h('img', {src: './node_modules/octicons/build/svg/reply.svg', height: 21})
-            ),
-
-            h('a',
-                {
-                    ref: el => this.menuButtonElement = el,
-                    id: 'headermenu',
-                    onClick: this.handleMenuClick
-                },
-                h('img', {src: './node_modules/octicons/build/svg/three-bars.svg', height: 21})
-            )
+    this.syncState = () => {
+      this.setState({
+        playerBusy: this.props.engineSyncers.map(syncer =>
+          syncer == null ? false : syncer.busy
         )
+      })
     }
-}
 
-module.exports = PlayBar
+    this.handleCurrentPlayerClick = () => this.props.onCurrentPlayerClick
+
+    this.handleMenuClick = () => {
+      let {left, top} = this.menuButtonElement.getBoundingClientRect()
+
+      helper.popupMenu(
+        [
+          {
+            label: t('&Pass'),
+            click: () => sabaki.makeMove([-1, -1])
+          },
+          {
+            label: t('&Resign'),
+            click: () => sabaki.makeResign()
+          },
+          {type: 'separator'},
+          {
+            label: t('Es&timate'),
+            click: () => sabaki.setMode('estimator')
+          },
+          {
+            label: t('&Score'),
+            click: () => sabaki.setMode('scoring')
+          },
+          {
+            label: t('&Edit'),
+            click: () => sabaki.setMode('edit')
+          },
+          {
+            label: t('&Find'),
+            click: () => sabaki.setMode('find')
+          },
+          {type: 'separator'},
+          {
+            label: t('&Info'),
+            click: () => sabaki.openDrawer('info')
+          }
+        ],
+        left,
+        top
+      )
+    }
+
+    for (let syncer of this.props.engineSyncers) {
+      if (syncer == null) continue
+
+      syncer.on('busy-changed', this.syncState)
+    }
+  }
+
+  shouldComponentUpdate(nextProps) {
+    return nextProps.mode !== this.props.mode || nextProps.mode === 'play'
+  }
+
+  componentWillReceiveProps(nextProps) {
+    for (let i = 0; i < nextProps.engineSyncers.length; i++) {
+      if (nextProps.engineSyncers !== this.props.engineSyncers) {
+        if (this.props.engineSyncers[i] != null) {
+          this.props.engineSyncers[i].removeListener(
+            'busy-changed',
+            this.syncState
+          )
+        }
+
+        if (nextProps.engineSyncers[i] != null) {
+          nextProps.engineSyncers[i].on('busy-changed', this.syncState)
+        }
+      }
+    }
+  }
+
+  render(
+    {
+      mode,
+      engineSyncers,
+      playerNames,
+      playerRanks,
+      playerCaptures,
+      currentPlayer,
+      showHotspot,
+
+      onCurrentPlayerClick = helper.noop
+    },
+    {playerBusy}
+  ) {
+    let captureStyle = index => ({
+      opacity: playerCaptures[index] === 0 ? 0 : 0.7
+    })
+
+    return h(
+      'header',
+      {
+        class: classNames({
+          hotspot: showHotspot,
+          current: mode === 'play'
+        })
+      },
+
+      h('div', {class: 'hotspot', title: t('Hotspot')}),
+
+      h(
+        'span',
+        {class: 'playercontent player_1'},
+        h(
+          'span',
+          {class: 'captures', style: captureStyle(0)},
+          playerCaptures[0]
+        ),
+        ' ',
+
+        engineSyncers[0] == null &&
+          playerRanks[0] &&
+          h('span', {class: 'rank'}, playerRanks[0]),
+        ' ',
+
+        engineSyncers[0] != null && playerBusy[0] && h(TextSpinner),
+        ' ',
+
+        h(
+          'span',
+          {
+            class: classNames('name', {engine: engineSyncers[0] != null}),
+            title: engineSyncers[0] != null ? t('Engine') : null
+          },
+
+          engineSyncers[0] == null
+            ? playerNames[0] || t('Black')
+            : engineSyncers[0].engine.name
+        )
+      ),
+
+      h(
+        'a',
+        {
+          class: 'current-player',
+          title: t('Change Player'),
+          onClick: onCurrentPlayerClick
+        },
+        h('img', {
+          src: `./img/ui/player_${currentPlayer}.svg`,
+          height: 21,
+          alt: currentPlayer < 0 ? t('White to play') : t('Black to play')
+        })
+      ),
+
+      h(
+        'span',
+        {class: 'playercontent player_-1'},
+        h(
+          'span',
+          {
+            class: classNames('name', {engine: engineSyncers[1] != null}),
+            title: engineSyncers[1] != null ? t('Engine') : null
+          },
+          engineSyncers[1] == null
+            ? playerNames[1] || t('White')
+            : engineSyncers[1].engine.name
+        ),
+        ' ',
+
+        engineSyncers[1] != null && playerBusy[1] && h(TextSpinner),
+        ' ',
+
+        engineSyncers[1] == null &&
+          playerRanks[1] &&
+          h('span', {class: 'rank'}, playerRanks[1]),
+        ' ',
+
+        h(
+          'span',
+          {class: 'captures', style: captureStyle(1)},
+          playerCaptures[1]
+        )
+      ),
+
+      h(
+        'a',
+        {
+          ref: el => (this.menuButtonElement = el),
+          class: 'menu',
+          onClick: this.handleMenuClick
+        },
+        h('img', {
+          src: './node_modules/@primer/octicons/build/svg/three-bars.svg',
+          height: 22
+        })
+      )
+    )
+  }
+}

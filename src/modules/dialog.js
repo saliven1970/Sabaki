@@ -1,54 +1,68 @@
-const {ipcRenderer, remote} = require('electron')
+import * as remote from '@electron/remote'
+import i18n from '../i18n.js'
+import sabaki from './sabaki.js'
+import {noop} from './helper.js'
+
+const t = i18n.context('dialog')
 const {app, dialog} = remote
-const helper = require('./helper')
 
-exports.showMessageBox = function(message, type = 'info', buttons = ['OK'], cancelId = 0) {
-    sabaki.setBusy(true)
+export function showMessageBox(
+  message,
+  type = 'info',
+  buttons = [t('OK')],
+  cancelId = 0
+) {
+  sabaki.setBusy(true)
 
-    let result = dialog.showMessageBox(remote.getCurrentWindow(), {
-        type,
-        buttons,
-        title: app.getName(),
-        message,
-        cancelId,
-        noLink: true
-    })
+  let result = dialog.showMessageBoxSync(remote.getCurrentWindow(), {
+    type,
+    buttons,
+    title: app.name,
+    message,
+    cancelId,
+    noLink: true
+  })
 
-    sabaki.setBusy(false)
-    return result
+  sabaki.setBusy(false)
+  return result
 }
 
-exports.showFileDialog = function(type, options, callback = helper.noop) {
-    sabaki.setBusy(true)
+export function showFileDialog(type, options) {
+  sabaki.setBusy(true)
 
-    let [t, ...ype] = [...type]
-    type = t.toUpperCase() + ype.join('').toLowerCase()
+  let [t, ...ype] = [...type]
+  type = t.toUpperCase() + ype.join('').toLowerCase()
 
-    let result = dialog[`show${type}Dialog`](remote.getCurrentWindow(), options)
+  let result = dialog[`show${type}DialogSync`](
+    remote.getCurrentWindow(),
+    options
+  )
 
-    sabaki.setBusy(false)
-    callback({result})
+  sabaki.setBusy(false)
+  return result
 }
 
-exports.showOpenDialog = function(options, callback) {
-    return exports.showFileDialog('open', options, callback)
+export function showOpenDialog(options) {
+  return showFileDialog('open', options)
 }
 
-exports.showSaveDialog = function(options, callback) {
-    return exports.showFileDialog('save', options, callback)
+export function showSaveDialog(options) {
+  return showFileDialog('save', options)
 }
 
-exports.showInputBox = function(message, onSubmit = helper.noop, onCancel = helper.noop) {
+export async function showInputBox(message) {
+  return new Promise(resolve => {
     sabaki.setState({
-        inputBoxText: message,
-        showInputBox: true,
-        onInputBoxSubmit: onSubmit,
-        onInputBoxCancel: onCancel
+      inputBoxText: message,
+      showInputBox: true,
+      onInputBoxSubmit: evt => resolve(evt.value),
+      onInputBoxCancel: () => resolve(null)
     })
+  })
 }
 
-exports.closeInputBox = function() {
-    let {onInputBoxCancel = helper.noop} = sabaki.state
-    sabaki.setState({showInputBox: false})
-    onInputBoxCancel()
+export function closeInputBox() {
+  let {onInputBoxCancel = noop} = sabaki.state
+  sabaki.setState({showInputBox: false})
+  onInputBoxCancel()
 }

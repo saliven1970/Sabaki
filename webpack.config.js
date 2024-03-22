@@ -1,27 +1,33 @@
 const path = require('path')
 
 module.exports = (env, argv) => ({
-    entry: './src/components/App.js',
+  entry: './src/components/App.js',
 
-    output: {
-        filename: 'bundle.js',
-        path: __dirname
-    },
+  output: {
+    filename: 'bundle.js',
+    path: __dirname
+  },
 
-    devtool: argv.mode === 'production' ? false : 'cheap-module-eval-source-map',
-    target: 'electron-renderer',
+  devtool: argv.mode === 'production' ? false : 'eval-cheap-module-source-map',
+  target: 'electron-renderer',
 
-    resolve: {
-        alias: {
-            'react': path.join(__dirname, 'node_modules/preact/dist/preact.min'),
-            'preact': path.join(__dirname, 'node_modules/preact/dist/preact.min'),
-            'prop-types': path.join(__dirname, 'src/modules/shims/prop-types'),
-            './streams': path.join(__dirname, 'src/modules/shims/noop'),
-            './extend-node': path.join(__dirname, 'src/modules/shims/noop')
-        }
-    },
+  node: {
+    __dirname: false
+  },
 
-    externals: {
-        'moment': 'null'
+  resolve: {
+    alias: {
+      react: 'preact/compat',
+      'react-dom/test-utils': 'preact/test-utils',
+      'react-dom': 'preact/compat',
+      'react/jsx-runtime': 'preact/jsx-runtime'
     }
+  },
+
+  externals: {
+    '@sabaki/i18n': 'require("@sabaki/i18n")',
+    'cross-spawn': 'null',
+    'iconv-lite': 'require("iconv-lite")',
+    moment: 'null'
+  }
 })
